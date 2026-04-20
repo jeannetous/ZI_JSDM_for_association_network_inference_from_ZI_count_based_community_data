@@ -1,0 +1,398 @@
+---
+title: "A JSDM with zero-inflation to increase the ecological relevance of analyses of species distribution data."
+author: "AAA"
+format: html
+editor: visual
+---
+
+# Useful libraries & functions
+
+PLNmodels version should be 1.2.2 or higher.
+
+```{r, loading libraries}
+library(PLNmodels)
+library(Metrics)
+library(pheatmap)
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(viridisLite)
+library(gt)
+library(ggtext)
+library(ggh4x)
+library(patchwork)
+library(scales)
+```
+
+# Loading & formatting data
+
+## Data loading
+
+```{r data-loading}
+load("data/NORTHERN_RANGE_DATASET_COUNTS.Rdata")
+NR_COUNTS <- NORTHERN_RANGE_DATASET_COUNTS %>% as_tibble()
+NR_COUNTS <- NR_COUNTS[, -21]
+
+load("data/NORTHERN_RANGE_DATASET_COVARIATES.Rdata")
+NR_COVARIATES <- 
+  NORTHERN_RANGE_DATASET_COVARIATES %>% as_tibble() %>% 
+  rename(latitude = LATITUDE, 
+         longitude = LONGITUDE, 
+         long_lat = LONGLAT,
+         coarse_gravel = coarse.gravel, # We do not include geographical coordinates here
+         fine_gravel = fine.gravel, 
+         leaf_litter = leaf.litter,
+         time_step = TimeStep, year = YEAR, month = MONTH, 
+         stream = STREAM, 
+         disturbance = DISTURBANCE, # human activity / binary categorical variable
+         altitude = ALTITUDE, 
+         season = SEASON) %>% 
+  mutate(
+    # season = case_match(time_step,
+    #   c(1, 5,  9, 13, 17) ~ "dry_start",
+    #   c(2, 6, 10, 14, 18) ~ "dry_end",
+    #   c(3, 7, 11, 15, 19) ~ "wet_start",
+    #   c(4, 8, 12, 16    ) ~ "wet_end"
+    # ),
+    season = as.character(season),
+    year = as.character(year),
+    disturbance = ifelse(disturbance == 1, "yes", "no")
+  ) %>% 
+  ## flow is not reliable
+  ## time_step + month are redundant with season + year
+  ## site is redudant with disturbance + stream
+  ## long_lat is the 1st PCA axis of latitude + longitude
+  dplyr::select(-latitude, -longitude, - long_lat, -site, -time_step,
+                -month, -flow) %>% # we remove geographical coordinates
+  relocate(altitude, width, depth, volume, garbage,
+           conductivity, O2, pH, temperature, turbidity, # site features
+           coarse_gravel, fine_gravel, leaf_litter, cobble, sand, silt, boulders, canopy, # soil
+           season, year, # sampling time
+           stream, disturbance # categorical: place + human activity
+         )
+# turbidity: ordinal variable indicating the level of turbidity
+# season:-> dry-start/dry-end, wet-start/wet-end, (january-> may: dry)
+quali_ind <- seq(ncol(NR_COVARIATES) - 3, ncol(NR_COVARIATES))
+
+```
+
+## Data visualization
+
+```{r, data-visualization}
+log_abundance <- log(1 + NR_COUNTS)
+log_abundance_sorted <- log_abundance[order(NR_COVARIATES$stream), ]
+
+
+color_palette  <- paletteer::paletteer_c("ggthemes::Orange-Gold", n = 30)
+palette_colors <- paletteer::paletteer_c("ggthemes::Orange-Gold", n = 29)  # 29 instead of 30
+color_palette <- c("white", palette_colors)
+max_val <- max(log_abundance_sorted, na.rm = TRUE)
+
+pheatmap(log_abundance_sorted,
+         color = color_palette,
+         cluster_rows = FALSE, cluster_cols = FALSE,
+         annotation_row = data.frame(Stream = NR_COVARIATES$stream),
+         show_rownames = FALSE)
+```
+
+## Covariates preparation (PCA)
+
+```{r pca}
+nb_pc <- ncol(NR_COVARIATES) - 4
+NR_PCA <-
+  NR_COVARIATES %>%
+  PCA(quali.sup = quali_ind, ncp = nb_pc, scale.unit = TRUE, graph = FALSE)
+
+NR_PCA_SCORES <- setNames(data.frame(NR_PCA$ind$coord), paste0("PC",1:nb_pc))
+```
+
+```{r data-formatting}
+NR_DATA <- prepare_data(
+  counts     = NR_COUNTS,
+  covariates = cbind(NR_COVARIATES, NR_PCA_SCORES)
+  )
+```
+
+# Running PLN-network
+
+```{r pln_network_pc1_pc2}
+model_PLN_pc1_pc2  <- PLNnetwork(Abundance ~ PC1 + PC2,  data = NR_DATA,
+                         control = PLNnetwork_param(min_ratio = 0.05,
+                                                    penalize_diagonal = FALSE))
+
+model_PLN_pc1_pc2_StARS <- model_PLN_pc1_pc2$getBestModel("StARS", stability = 0.8)
+# model_PLN_pc1_pc2_StARS <- model_PLN_pc1_pc2$getModel(0.2444352)
+
+model_PLN_pc1_pc2_StARS$plot_network()
+
+B_log_scale <- sign(model_PLN_pc1_pc2_StARS$model_par$B) * log1p(abs(model_PLN_pc1_pc2_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2")
+
+pheatmap(B_log_scale,color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+```{r pln_network_pc1_pc1_disturbance}
+model_PLN_pc1_pc2_disturbance  <- PLNnetwork(Abundance ~ PC1 + PC2 + disturbance,  data = NR_DATA,
+                         control = PLNnetwork_param(min_ratio = 0.05,
+                                                    penalize_diagonal = FALSE))
+model_PLN_pc1_pc2_disturbance_StARS <- model_PLN_pc1_pc2_disturbance$getBestModel("StARS", stability = 0.8)
+# model_PLN_pc1_pc2_disturbance_StARS <- model_PLN_pc1_pc2_disturbance$getModel(0.2361045)
+
+model_PLN_pc1_pc2_disturbance_StARS$plot_network()
+
+B_log_scale <- sign(model_PLN_pc1_pc2_disturbance_StARS$model_par$B) * log1p(abs(model_PLN_pc1_pc2_disturbance_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2", "disturbance")
+pheatmap(B_log_scale,
+         color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+```{r pln_network}
+model_PLN  <- PLNnetwork(Abundance ~ PC1 + PC2 + stream + disturbance,  data = NR_DATA,
+                         control = PLNnetwork_param(min_ratio = 0.05,
+                                                    penalize_diagonal = FALSE))
+model_PLN_StARS <- model_PLN$getBestModel("StARS", stability = 0.8)
+# model_PLN_StARS <- model_PLN$getModel(0.06570186)
+
+model_PLN_StARS$plot_network()
+
+B_log_scale <- sign(model_PLN_StARS$model_par$B) * log1p(abs(model_PLN_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2", "stream_Caura", "stream_Lopinot",
+                           "stream_LowerAripo", "stream_Maracas",   "stream_Quare",
+                           "stream_Turure", "stream_UpperAripo", "disturbance")
+pheatmap(B_log_scale,
+         color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+# Running ZIPLN-network
+
+```{r zipln_network_pc1_pc2 }
+model_ZIPLN_pc1_pc2   <- ZIPLNnetwork(Abundance ~ PC1 + PC2 | 1,  data = NR_DATA,
+                         control = ZIPLNnetwork_param(min_ratio = 0.05,
+                                                      penalize_diagonal = FALSE))
+model_ZIPLN_pc1_pc2_StARS <- model_ZIPLN_pc1_pc2$getBestModel("StARS", stability = 0.8)
+# model_ZIPLN_pc1_pc2_StARS <- model_ZIPLN_pc1_pc2$getModel(0.05578001)
+
+model_ZIPLN_pc1_pc2_StARS$plot_network()
+
+B_log_scale <- sign(model_ZIPLN_pc1_pc2_StARS$model_par$B) * log1p(abs(model_ZIPLN_pc1_pc2_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2")
+pheatmap(B_log_scale,
+         color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+
+pheatmap(model_ZIPLN_pc1_pc2_StARS$model_par$Pi,
+          color = paletteer::paletteer_c("viridis::cividis", 30),
+          cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+```{r zipln_network_pc1_pc2_disturbance }
+model_ZIPLN_pc1_pc2_disturbance   <- ZIPLNnetwork(Abundance ~ PC1 + PC2 + disturbance | 1,  data = NR_DATA,
+                                                  control = ZIPLNnetwork_param(min_ratio = 0.05,
+                                                      penalize_diagonal = FALSE))
+model_ZIPLN_pc1_pc2_disturbance_StARS <- model_ZIPLN_pc1_pc2_disturbance$getBestModel("StARS", stability = 0.8)
+# model_ZIPLN_pc1_pc2_disturbance_StARS <- model_ZIPLN_pc1_pc2_disturbance$getModel(0.04622685)
+
+
+model_ZIPLN_pc1_pc2_disturbance_StARS$plot_network()
+
+B_log_scale <- sign(model_ZIPLN_pc1_pc2_disturbance_StARS$model_par$B) * log1p(abs(model_ZIPLN_pc1_pc2_disturbance_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2", "disturbance")
+pheatmap(B_log_scale,
+         color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+
+pheatmap(model_ZIPLN_pc1_pc2_disturbance_StARS$model_par$Pi,
+         color = paletteer::paletteer_c("viridis::cividis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+```{r zipln_network}
+model_ZIPLN  <- ZIPLNnetwork(Abundance ~ PC1 + PC2 + disturbance | stream,  data = NR_DATA,
+                         control = ZIPLNnetwork_param(min_ratio = 0.05,
+                                                      penalize_diagonal = FALSE))
+# model_ZIPLN_StARS <- model_ZIPLN$getBestModel("StARS", stability = 0.8)
+model_ZIPLN_StARS <- model_ZIPLN$getModel(0.03317969)
+
+model_ZIPLN_StARS$plot_network()
+
+B_log_scale <- sign(model_ZIPLN_StARS$model_par$B) * log1p(abs(model_ZIPLN_StARS$model_par$B))
+rownames(B_log_scale) <- c("Intercept", "PC1", "PC2", "disturbance")
+pheatmap(B_log_scale,
+         color = paletteer::paletteer_c("viridis::viridis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+
+pheatmap(model_ZIPLN_StARS$model_par$Pi,
+         color = paletteer::paletteer_c("viridis::cividis", 30),
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+
+
+```{r}
+pi_proba <- model_ZIPLN_StARS$model_par$Pi 
+pi_proba_df <- as.data.frame(pi_proba)
+
+STREAM <- NR_DATA$stream
+# Assume M is a matrix and V is a vector of same length as nrow(M)
+
+# Convert to data frame
+
+pi_proba_df$STREAM <- STREAM
+
+# Keep one row per unique value of V
+pi_proba_unique <- pi_proba_df %>%
+  group_by(STREAM) %>%
+  slice(1) %>%
+  ungroup()
+
+# Extract matrix part
+pi_proba_final <- as.matrix(select(pi_proba_unique, -STREAM))
+
+# Set row names as the values of V
+rownames(pi_proba_final) <- pi_proba_unique$V
+
+# Plot the heatmap
+
+pheatmap(pi_proba_final,
+         color = rev(paletteer::paletteer_c("viridis::cividis", 30)),
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         show_rownames = TRUE)  # show V as row names
+
+
+```
+
+
+# Fit diagnostic
+
+```{r, fitting_diagnostics_1}
+n <- dim(NR_DATA$Abundance)[[1]] ; p <- dim(NR_DATA$Abundance)[[2]] ; 
+
+ZIPLN_fitted <- model_ZIPLN_StARS$fitted
+ZIPLN_fitted[model_ZIPLN_StARS$model_par$Pi > 0.5] <- 0
+
+fitted_data_PLN <- data.frame("observed" = as.vector(NR_DATA$Abundance),
+                              "fitted"   = as.vector(model_PLN_StARS$fitted),
+                              "method"   = "PLN")
+
+fitted_data_ZIPLN <- data.frame("observed" = as.vector(NR_DATA$Abundance),
+                                "fitted"   = as.vector(model_ZIPLN_StARS$fitted),
+                                "method"   = "ZIPLN")
+
+fitted_data <- rbind(fitted_data_PLN, fitted_data_ZIPLN)
+fitted_data[fitted_data$fitted == 0,]$fitted <- 1e-50
+
+fitted_data$neutral <- 1
+
+zero_fitted_data <- fitted_data[fitted_data$observed == 0,]
+```
+
+
+```{r fig.width=8, fig.height=2, fitting_diagnostics_2}
+p1 <- fitted_data |>
+  ggplot(aes(x = observed, y = fitted)) + 
+  geom_point(alpha = 0.1) + geom_abline(slope = 1, intercept = 0, color = "grey") + 
+  scale_x_log10(breaks = c(1, 100, 10000)) + scale_y_log10() + 
+  labs(x = "Observed count", y = "Fitted value") + 
+  facet_wrap2(~method, 
+              strip = strip_themed(
+                background_x = elem_list_rect(fill = c("#440154FF", "#FDE725FF")),
+                text_x = elem_list_text(color = c("white", "black"), face = rep("bold", 2)),
+                )) +
+  ggpubr::theme_pubclean() +
+  theme(  text = element_text(family = "TimesNewRomanPSMT",))
+
+p2 <- fitted_data |> filter(observed == 0) |> 
+  ggplot(aes(x = method |> fct_rev(), y = fitted)) + 
+  geom_violin(aes(fill = method)) + 
+  scale_fill_viridis_d(guide = "none") +
+  coord_flip() +
+  scale_y_continuous(trans = pseudo_log_trans(sigma = 0.0005)) +
+  ggpubr::theme_pubclean() + 
+  labs(x = NULL, y = "Fitted value (null counts)") +
+  theme(  text = element_text(family = "TimesNewRomanPSMT",))
+
+
+p3 <- fitted_data |> filter(observed == 0) |> 
+  ggplot(aes(x = method |> fct_rev(), y = fitted)) + 
+  geom_violin(aes(fill = method)) + 
+  scale_fill_viridis_d(guide = "none") +
+  coord_flip() +
+  scale_y_log10() +
+  ggpubr::theme_pubclean() + 
+  labs(x = NULL, y = "Fitted value (null counts) - Zoom")+
+  theme(  text = element_text(family = "TimesNewRomanPSMT",))
+
+```
+
+```{r fig.width=8, fig.height=2}
+p1 + p2 + p3 + plot_layout(widths = c(0.42, 0.28, 0.30))
+```
+
+
+# Testing additional covariates
+```{r, PLN-covariates-testing}
+current_formula <- "Abundance ~ stream + disturbance + PC1 + PC2"
+current_model_PLN  <- PLNnetwork(as.formula(current_formula),  data = NR_DATA,
+                                 control = PLNnetwork_param(min_ratio = 0.05,
+                                                            penalize_diagonal = FALSE))
+
+current_model_PLN_StARS <- current_model_PLN$getBestModel("StARS", stability = 0.8)
+
+PLN_BIC_df      <- data.frame("Formula" = current_formula,
+                              "BIC" = current_model_PLN_StARS$BIC,
+                              "fit" = rmse(current_model_PLN_StARS$fitted,
+                                           NR_DATA$Abundance))
+
+for(k in 3:10){
+  current_formula <- paste0(current_formula, " + PC", as.character(k))
+  current_model_PLN  <- PLNnetwork(as.formula(current_formula), 
+                                   data = NR_DATA,
+                                   control = PLNnetwork_param(min_ratio = 0.05,
+                                                              penalize_diagonal = FALSE))
+  current_model_PLN_StARS <- current_model_PLN$getBestModel("StARS", stability = 0.8)
+  current_df      <- data.frame("Formula" = current_formula,
+                                "BIC" = current_model_PLN_StARS$BIC,
+                                "fit" = rmse(current_model_PLN_StARS$fitted,
+                                             NR_DATA$Abundance))
+  PLN_BIC_df      <- rbind(PLN_BIC_df, current_df)
+}
+
+```
+
+```{r, ZIPLN-covariates-testing}
+current_formula_ab <- "Abundance ~ stream + disturbance + PC1 + PC2"
+zi_formula <- "| 1 + stream"
+current_formula    <- paste0(current_formula_ab, zi_formula)
+
+current_model_ZIPLN  <- ZIPLNnetwork(as.formula(current_formula),  data = NR_DATA,
+                                 control = ZIPLNnetwork_param(min_ratio = 0.05,
+                                                            penalize_diagonal = FALSE))
+
+current_model_ZIPLN_StARS <- current_model_PLN$getBestModel("StARS", stability = 0.8)
+
+ZIPLN_BIC_df      <- data.frame("Formula" = current_formula,
+                                "BIC" = current_model_ZIPLN_StARS$BIC,
+                                "fit" = rmse(current_model_ZIPLN_StARS$fitted,
+                                             NR_DATA$Abundance))
+
+for(k in 3:4){
+  current_formula_ab <- paste0(current_formula_ab, " + PC", as.character(k))
+  current_formula    <- paste0(current_formula_ab, zi_formula)
+  current_model_ZIPLN  <- ZIPLNnetwork(as.formula(current_formula), 
+                                     data = NR_DATA,
+                                     control = ZIPLNnetwork_param(min_ratio = 0.05,
+                                                                penalize_diagonal = FALSE))
+  current_model_ZIPLN_StARS <- current_model_ZIPLN$getBestModel("StARS", stability = 0.8)
+  current_df      <- data.frame("Formula" = current_formula,
+                                "BIC" = current_model_ZIPLN_StARS$BIC,
+                                "fit" = rmse(current_model_ZIPLN_StARS$fitted,
+                                             NR_DATA$Abundance))
+  ZIPLN_BIC_df      <- rbind(ZIPLN_BIC_df, current_df)
+}
+
+```
+
