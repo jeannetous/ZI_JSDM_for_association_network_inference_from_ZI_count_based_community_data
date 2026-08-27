@@ -1,7 +1,7 @@
 ############################ Loading useful libraries ##########################
 source("ZIPLN_simulations.R")
 set.seed(2)
-distribution = "negative.binomial"
+distribution = "ZIP"
 
 # Creating the saving repositories if needed
 for (d in c("RES/ZIP_simulations",
