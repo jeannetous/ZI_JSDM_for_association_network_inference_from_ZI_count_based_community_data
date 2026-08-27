@@ -7,7 +7,6 @@ source("utils.R")
 source("ZIPLN_measures.R")
 source("ZIPLN_simulate_data.R")
 source("negative_binomial_simulate_data.R")
-# source("reference_methods.R")
 
 #' @description simulates data under the ZIPLN model, runs different models and
 #' outputs the performance measures for each one
@@ -15,11 +14,14 @@ source("negative_binomial_simulate_data.R")
 #' @param simu_params simulation parameters to simulate the data
 #' @param PLN_formula formula to use to run PLN-network, the variables are named
 #' V1, V2... so the formula should look like "Abundance ~ 0 + V1..."
-#' @param ZIPLN_formula formula to use to run ZIPLN-network. If simu_params$zi_type = "covar",
-#' the ZI variables are named VZI1, VZI2...so the formula should look like "Abundance ~ 0 + V1... | 0 + VZI1"
-#' If simu_params$zi_type = "sites" or "species", the correct "zi" parameter is used in ZIPLNnetwork
-#' @param PLN_formula_ZIvar formula to use to run PLN-network including ZI variables in the abundance. Useful
-#' only if zi_type = covar. Should look like "Abundance ~ 0 + V1 +... + VZI1 + ..."
+#' @param ZIPLN_formula formula to use to run ZIPLN-network. If 
+#' simu_params$zi_type = "covar", the ZI variables are named VZI1, VZI2...so the
+#' formula should look like "Abundance ~ 0 + V1... | 0 + VZI1" If
+#' simu_params$zi_type = "sites" or "species", the correct "zi" parameter is
+#' used in ZIPLNnetwork
+#' @param PLN_formula_ZIvar formula to use to run PLN-network including ZI
+#' variables in the abundance. Useful only if zi_type = covar. Should look like
+#' "Abundance ~ 0 + V1 +... + VZI1 + ..."
 #' @param hmsc_params parameters for hmsc optimization
 one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
                                  PLN_formula, ZIPLN_formula, 
@@ -41,7 +43,6 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
     X <- data.frame(params$X, as.factor(params$zi_params$X0))
     colnames(X)[[length(colnames(X))]] <- "VZI1"
   }else{X <- params$X}
-  if(simu_params$d > 1){params$X <- params$X[, 1:2]} # parasite covariate(s)
   simu_data <- prepare_data(Y, X)
   params$Y <- simu_data$Abundance
   ########################## Running hmsc  #####################################
@@ -62,11 +63,12 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
     )
   }
 
-  # # Setting regression formula
+  # Setting regression formula
   if(simu_params$add_intercept){
     XFormula <- "~ 1 + V1"
   }else{XFormula<- "~ V1 - 1"}
-  # Running hmsc optim
+
+  # Running hmsc optimisation
   t0 = Sys.time()
   m = Hmsc(Y = Y_hurdle, XData = XData, XFormula = as.formula(XFormula),
            studyDesign = hmsc_params$studyDesign,
@@ -78,12 +80,11 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
   t_hmsc = Sys.time() - t0
   hmsc_measures <- get_measures(m, params, model_selection = NULL,
                                 stability = NULL,
-                                posterior_proba = hmsc_params$posterior_proba,
                                 AUC = NULL, add_intercept = simu_params$add_intercept,
                                 model_type = "hmsc")
-
   hmsc_measures[["time"]] = as.numeric(t_hmsc, units = "secs")
-  ############### Running hmsc model with ZI covar, if applicable ##############
+
+  ############### Running hmsc with ZI covar, if applicable ####################
   if(!is.na(PLN_formula_ZIvar)){
     XData_ZIvar = data.frame("V1" = X[,"V1"], "VZI1" = X[,"VZI1"])
     params$XData_ZIvar <- XData_ZIvar
@@ -98,7 +99,6 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
     t_hmsc_ZIvar = Sys.time() - t0
     hmsc_ZIvar_measures <- get_measures(m_ZIvar, params, model_selection = NULL,
                                         stability = NULL,
-                                        posterior_proba = hmsc_params$posterior_proba,
                                         add_intercept = simu_params$add_intercept,
                                         AUC = NULL, model_type = "hmsc")
 
@@ -106,7 +106,8 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
   }else{
     hmsc_ZIvar_measures <- NULL
   }
-  ########################## Running GLLVM #####################################
+  
+  ########################## Running gllvm #####################################
   if(simu_params$add_intercept){
     gllvm_formula <- "~ Intercept + V1"
   }else{gllvm_formula <- "~ V1"}
@@ -116,11 +117,10 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
   t_gllvm = Sys.time() - t0
   gllvm_measures <- get_measures(gllvm_model, params, model_selection = NULL,
                                 stability = NULL,
-                                posterior_proba = NULL,
                                 add_intercept = simu_params$add_intercept,
                                 AUC = NULL, model_type = "gllvm")
   gllvm_measures[["time"]] = as.numeric(t_gllvm, units = "secs")
-  ############### Running GLLVM model with ZI covar, if applicable #############
+  ############### Running glllvm with ZI covar, if applicable ##################
   if(!is.na(PLN_formula_ZIvar)){
     if(simu_params$add_intercept){
       gllvm_ZIvar_formula <- "~ Intercept + V1 + VZI1"
@@ -130,14 +130,14 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
     t_gllvm = Sys.time() - t0
     gllvm_ZIvar_measures <- get_measures(gllvm_ZIvar_model, params,
                                          model_selection = NULL, stability = NULL,
-                                         posterior_proba = NULL,
                                          add_intercept = simu_params$add_intercept,
                                          AUC = NULL, model_type = "gllvm")
     gllvm_ZIvar_measures[["time"]] = as.numeric(t_gllvm, units = "secs")
   }else{
     gllvm_ZIvar_measures <- NULL
   }
-  ########################## Running PLN model #################################
+  
+  ########################## Running PLN #######################################
   t0 = Sys.time()
   myPLN <- PLNnetwork(as.formula(PLN_formula), simu_data,
                       control = PLNnetwork_param(penalize_diagonal = FALSE,
@@ -145,22 +145,28 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
                                                  n_penalties = 20,
                                                  trace = 0))
   t_PLN = Sys.time() - t0
+  myPLN0 <- PLN(as.formula(PLN_formula), simu_data)
   PLN_StARS_1_measures <- get_measures(myPLN, params, model_selection = "StARS",
-                                     stability = 0.8)
+                                       unpenalised_model = myPLN0, stability = 0.8)
   t_PLN_StARS = Sys.time() - t0
   PLN_StARS_2_measures <- get_measures(myPLN, params, model_selection = "StARS",
                                        stability = 0.9,
                                        add_intercept = simu_params$add_intercept,
-                                       AUC = PLN_StARS_1_measures[["AUC"]])
+                                       AUC = PLN_StARS_1_measures[["AUC"]],
+                                       AUC.alt = PLN_StARS_1_measures[["AUC.alt"]],
+                                       Sigma_AUC = PLN_StARS_1_measures[["Sigma_AUC"]])
+  
   PLN_BIC_measures <- get_measures(myPLN, params, model_selection = "BIC",
                                    add_intercept = simu_params$add_intercept,
-                                   AUC = PLN_StARS_1_measures[["AUC"]])
+                                   AUC = PLN_StARS_1_measures[["AUC"]],
+                                   AUC.alt = PLN_StARS_1_measures[["AUC.alt"]],
+                                   Sigma_AUC = PLN_StARS_1_measures[["Sigma_AUC"]])
 
   PLN_StARS_1_measures[["time"]] = as.numeric(t_PLN_StARS, units = "secs")
   PLN_StARS_2_measures[["time"]] = as.numeric(t_PLN_StARS, units = "secs")
   PLN_BIC_measures[["time"]] = as.numeric(t_PLN, units = "secs")
   
-  ############### Running PLN model with ZI covar, if applicable ###############
+  ############### Running PLN with ZI covar, if applicable #####################
   if(!is.na(PLN_formula_ZIvar)){
     t0 = Sys.time()
     myPLN_ZIvar <- PLNnetwork(as.formula(PLN_formula_ZIvar), simu_data,
@@ -168,106 +174,65 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
                                                          min_ratio = 0.01,
                                                          n_penalties = 20))
     t_PLN_ZIvar = Sys.time() - t0
+    myPLN_ZIvar0 <- PLN(as.formula(PLN_formula_ZIvar), simu_data)
     PLN_ZIvar_StARS_1_measures <- get_measures(myPLN_ZIvar, params, model_selection = "StARS",
-                                               stability = 0.8, add_intercept = simu_params$add_intercept)
+                                               stability = 0.8, unpenalised_model = myPLN_ZIvar0,
+                                               add_intercept = simu_params$add_intercept)
     t_PLN_ZIvar_StARS = Sys.time() - t0
     PLN_ZIvar_StARS_2_measures <- get_measures(myPLN_ZIvar, params,
                                                model_selection = "StARS",
                                                stability = 0.9,
-                                               AUC = PLN_ZIvar_StARS_1_measures[["AUC"]])
+                                               AUC = PLN_ZIvar_StARS_1_measures[["AUC"]],
+                                               AUC.alt = PLN_ZIvar_StARS_1_measures[["AUC.alt"]],
+                                               Sigma_AUC = PLN_ZIvar_StARS_1_measures[["Sigma_AUC"]])
     PLN_ZIvar_BIC_measures <- get_measures(myPLN_ZIvar, params, model_selection = "BIC",
-                                           AUC = PLN_ZIvar_StARS_1_measures[["AUC"]])
+                                           AUC = PLN_ZIvar_StARS_1_measures[["AUC"]],
+                                           AUC.alt = PLN_ZIvar_StARS_1_measures[["AUC.alt"]],
+                                           Sigma_AUC = PLN_ZIvar_StARS_1_measures[["Sigma_AUC"]])
     PLN_ZIvar_StARS_1_measures[["time"]] = as.numeric(t_PLN_ZIvar_StARS, units = "secs")
     PLN_ZIvar_StARS_2_measures[["time"]] = as.numeric(t_PLN_ZIvar_StARS, units = "secs")
     PLN_ZIvar_BIC_measures[["time"]] = as.numeric(t_PLN_ZIvar, units = "secs")
   }else{
-    PLN_ZIvar_StARS_1_measures <- NULL ; PLN_ZIvar_StARS_2_measures <- NULL 
+    PLN_ZIvar_StARS_1_measures <- NULL ; PLN_ZIvar_StARS_2_measures <- NULL
     PLN_ZIvar_BIC_measures <- NULL
   }
-  ######################### Running ZIPLN model ################################
+
+
+  ######################### Running ZIPLN ######################################
   if(simu_params$zi_type == "covar"){zi <- NULL
   }else{zi <- ifelse(simu_params$zi_type == "sites", "row", "col")}
-  
-  t0 = Sys.time()
 
+  t0 = Sys.time()
   myZIPLN <- ZIPLNnetwork(as.formula(ZIPLN_formula), simu_data, zi = zi,
                           control = ZIPLNnetwork_param(penalize_diagonal = FALSE,
                                                        min_ratio = 0.01,
                                                        n_penalties = 20,
                                                        trace = 0))
+
+  myZIPLN0 <- ZIPLN(as.formula(ZIPLN_formula), simu_data, zi = zi)
+
+
   t_ZIPLN = Sys.time() - t0
-  ZIPLN_StARS_1_measures <- get_measures(myZIPLN, params, model_selection = "StARS",
-                                       stability = 0.8, model_type = "ZIPLN")
+  ZIPLN_StARS_1_measures <- get_measures(myZIPLN, params,
+                                         unpenalised_model = myZIPLN0,
+                                         model_selection = "StARS",
+                                         stability = 0.8, model_type = "ZIPLN")
   t_ZIPLN_StARS = Sys.time() - t0
   ZIPLN_StARS_2_measures <- get_measures(myZIPLN, params, model_selection = "StARS",
                                          stability = 0.9,
                                          AUC = ZIPLN_StARS_1_measures[["AUC"]],
+                                         AUC.alt = ZIPLN_StARS_1_measures[["AUC.alt"]],
+                                         Sigma_AUC = ZIPLN_StARS_1_measures[["Sigma_AUC"]],
                                          model_type = "ZIPLN")
   ZIPLN_BIC_measures <- get_measures(myZIPLN, params, model_selection = "BIC",
                                      AUC = ZIPLN_StARS_1_measures[["AUC"]],
+                                     AUC.alt = ZIPLN_StARS_1_measures[["AUC.alt"]],
+                                     Sigma_AUC = ZIPLN_StARS_1_measures[["Sigma_AUC"]],
                                      model_type = "ZIPLN")
   ZIPLN_StARS_1_measures[["time"]] = as.numeric(t_ZIPLN_StARS, units = "secs")
   ZIPLN_StARS_2_measures[["time"]] = as.numeric(t_ZIPLN_StARS, units = "secs")
   ZIPLN_BIC_measures[["time"]] = as.numeric(t_ZIPLN, units = "secs")
-  ######################### Running ZIPLN model with "parasite covar" ##########
-  X_extra <- generate_X(simu_params$n, 5, simu_params$min_X,
-                           simu_params$max_X, add_intercept = F)
-  colnames(X_extra) <- c("E1", "E2","E3", "E4","E5")
-  simu_data_extra_covar <- prepare_data(Y, cbind(X, X_extra))
-  params_extra <- params ; params_extra$X <- cbind(params$X, X_extra)
   
-  if(simu_params$zi_type == "covar"){
-    zi <- NULL
-    ZIPLN_formula_split <- strsplit(ZIPLN_formula, "\\|")[[1]]
-    ZIPLN_formula_extra_covar <- paste0(ZIPLN_formula_split[[1]], "+ E1 + E2 + E3 + E4 + E5", "|",
-                                        ZIPLN_formula_split[[2]])
-  }else{
-    zi <- ifelse(simu_params$zi_type == "sites", "row", "col")
-    ZIPLN_formula_extra_covar <- paste0(ZIPLN_formula, "+ E1 + E2 + E3 + E4 + E5")}
-  
-  t0 = Sys.time()
-  
-  myZIPLN_extra_covar <- ZIPLNnetwork(as.formula(ZIPLN_formula_extra_covar),
-                                      simu_data_extra_covar, zi = zi,
-                                      control = ZIPLNnetwork_param(penalize_diagonal = FALSE,
-                                                                   min_ratio = 0.01,
-                                                                   n_penalties = 20,
-                                                                   trace = 0))
-  t_ZIPLN_extra_covar = Sys.time() - t0
-  ZIPLN_extra_covar_StARS_1_measures <- get_measures(myZIPLN_extra_covar, params_extra,
-                                                     model_selection = "StARS",
-                                         stability = 0.8, model_type = "ZIPLN")
-  t_ZIPLN_extra_covar_StARS = Sys.time() - t0
-  ZIPLN_extra_covar_StARS_2_measures <- get_measures(myZIPLN_extra_covar, params_extra,
-                                                     model_selection = "StARS",
-                                                     stability = 0.9,
-                                                     AUC = ZIPLN_StARS_1_measures[["AUC"]],
-                                                     model_type = "ZIPLN")
-  ZIPLN_extra_covar_BIC_measures <- get_measures(myZIPLN_extra_covar, params_extra,
-                                                 model_selection = "BIC",
-                                                 AUC = ZIPLN_extra_covar_StARS_1_measures[["AUC"]],
-                                                 model_type = "ZIPLN")
-  ZIPLN_extra_covar_StARS_1_measures[["time"]] = as.numeric(t_ZIPLN_extra_covar_StARS, units = "secs")
-  ZIPLN_extra_covar_StARS_2_measures[["time"]] = as.numeric(t_ZIPLN_extra_covar_StARS, units = "secs")
-  ZIPLN_extra_covar_BIC_measures[["time"]] = as.numeric(t_ZIPLN_extra_covar, units = "secs")
-  ############################# Running reference methods ######################
-  # reference_names   <- c("spiecEasi_network", "graphical_lasso_network",
-  #                        "neighborhood_selection_network", "sparCC_network")
-  # reference_methods <- c(spiecEasi_network, graphical_lasso_network,
-  #                        neighborhood_selection_network, sparCC_network)
-  # reference_results <- lapply(reference_methods, function(f) f(params$Y, params$X))
-  # reference_roc     <- lapply(reference_results,
-  #                             function(res) roc_metrics(params$Omega, res))
-  # reference_auc     <- lapply(reference_roc, perf_auc)
-  # reference_rows    <- lapply(1:length(reference_names),
-  #                            function(i) c(method = reference_names[[i]],
-  #                                          AUC = reference_auc[[i]]))
-  # reference_df      <- as.data.frame(cbind(simu = simu, n = simu_params$n, p = simu_params$p,
-  #                                          omega_structure = simu_params$omega_structure,
-  #                                          zi_type = simu_params$zi_type,
-  #                                          zi_config = zi_config,
-  #                                          do.call(rbind, reference_rows)))
-
   ################# Merging all the measures in one data frame #################
   measure_rows <- list(c(method = "PLN", PLN_StARS_1_measures),
                        c(method = "PLN", PLN_StARS_2_measures),
@@ -275,25 +240,16 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
                        c(method = "ZIPLN", ZIPLN_StARS_1_measures),
                        c(method = "ZIPLN", ZIPLN_StARS_2_measures),
                        c(method = "ZIPLN", ZIPLN_BIC_measures),
-                       c(method = "ZIPLN_extra_covar", ZIPLN_extra_covar_StARS_1_measures),
-                       c(method = "ZIPLN_extra_covar", ZIPLN_extra_covar_StARS_2_measures),
-                       c(method = "ZIPLN_extra_covar", ZIPLN_extra_covar_BIC_measures),
-                       # c(method = "hmsc", hmsc_measures),
+                       c(method = "hmsc", hmsc_measures),
                        c(method = "gllvm", gllvm_measures)
                        )
-
-
-   
-  # measure_rows <- list(c(method = "PLN", PLN_BIC_measures),
-  #                      c(method = "ZIPLN", ZIPLN_BIC_measures)
-  # )
 
   if(!is.na(PLN_formula_ZIvar)){
     measure_rows <- c(measure_rows,
                       list(c(method = "PLN_ZIvar", PLN_ZIvar_StARS_1_measures),
                            c(method = "PLN_ZIvar", PLN_ZIvar_StARS_2_measures),
                            c(method = "PLN_ZIvar", PLN_ZIvar_BIC_measures),
-                           # c(method = "hmsc_ZIvar", hmsc_ZIvar_measures),
+                           c(method = "hmsc_ZIvar", hmsc_ZIvar_measures),
                            c(method = "gllvm_ZIvar", gllvm_ZIvar_measures)))
   }
   
@@ -304,8 +260,6 @@ one_ZIPLN_simulation <- function(simu = 1, zi_config, simu_params,
                              zi_type = simu_params$zi_type,
                              zi_config = zi_config,
                              do.call(rbind, measure_rows)))
-  # reference_df[, setdiff(names(res), names(reference_df))] <- NA
-  # res <- rbind(res, reference_df)
   return(res)
 }
 
@@ -347,6 +301,9 @@ multiple_ZIPLN_simulations <- function(n_simu, zi_config, simu_params,
 #' @param n_list number of n (number of sites) values to go through
 #' @param p_list number of p (number of species) values to go through
 #' @param omega_structure_list list of omega_structure values to go through
+#' @param sigma_sparse  boolean, indicates whether the simulation should be
+#' based on a sparse variance matrix - default is FALSE, corresponding to a
+#' sparse precision matrix
 #' @param zi_type_list list of zi_type values to go through
 #' @param zi_mode_values_sites_list, list of zi_mode_values values to go through for the sites
 #' @param proba_mode_zi_sites_list, list of proba_mode_zi values to go through for the sites
@@ -376,7 +333,7 @@ multiple_ZIPLN_simulations <- function(n_simu, zi_config, simu_params,
 #' @param hmsc_params parameters for hmsc optimization
 #' @param mc.cores number of cores to run the simulations on in parallel
 grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
-                                  omega_structure_list,
+                                  omega_structure_list, sigma_sparse = FALSE,
                                   zi_type_list, zi_mode_values_sites_list,
                                   proba_mode_zi_sites_list,
                                   zi_mode_values_species_list,
@@ -403,8 +360,8 @@ grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
                                 proba_mode_zi   = proba_mode_zi_species_list,
                                 zi_config = paste0("species_", 1:length(zi_mode_values_species_list)))
   }
-
-
+  
+  
   settings <- settings %>%
     rowwise() %>%
     do({
@@ -420,7 +377,7 @@ grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
       }
     }) %>%
     ungroup()
-
+  
   if(! is.null(block_values_list)){
     block_values_rows <- do.call(rbind, lapply(seq_along(block_values_list), function(i) {
       df_tmp <- settings %>% filter(zi_type == "covar")
@@ -430,13 +387,13 @@ grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
       df_tmp$zi_config <- rep(paste0("covar_", i), nrow(df_tmp))
       return(df_tmp)
     }))
-
+    
     settings <- settings %>% filter(zi_type != "covar")
     settings <- settings %>% mutate(block_values = NA, row_clusters_proba = NA, col_clusters_proba = NA)
     settings <- rbind(settings, block_values_rows)
   }else{settings$block_values <- NA
-        settings$row_clusters_proba <- NA ; settings$col_clusters_proba <- NA}
-
+  settings$row_clusters_proba <- NA ; settings$col_clusters_proba <- NA}
+  
   settings$PLN_formula_ZIvar <- NA
   if(add_intercept){
     settings$PLN_formula <- "Abundance ~ 1 + V1"
@@ -461,12 +418,13 @@ grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
                                                    ZIPLN_formula, PLN_formula_ZIvar,
                                                    add_intercept,
                                                    n_simu){
-
+    
     simu_params = list(n = n,
                        p = p,
                        d = d,
                        add_intercept = add_intercept,
                        omega_structure = omega_structure,
+                       sigma_sparse    = sigma_sparse,
                        zi_type = zi_type,
                        zi_covar_cluster = TRUE,
                        min_X = min_X, max_X = max_X,
@@ -481,7 +439,7 @@ grid_ZIPLN_simulation <- function(n_simu, n_list, p_list, add_intercept,
                        X0 = NULL, B0 = NULL,
                        min_X0 = min_X0, max_X0 = max_X0,
                        max_X0B0 = max_X0B0)
-
+    
     multiple_ZIPLN_simulations(
       n_simu = n_simu, zi_config = zi_config, simu_params,
       PLN_formula = PLN_formula,

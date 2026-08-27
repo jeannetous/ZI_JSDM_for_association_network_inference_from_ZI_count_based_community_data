@@ -1,6 +1,6 @@
 library(igraph)
 
-####################### Functions to generate Omega ############################
+####################### Functions to generate Omega / Sigma ####################
 
 #' @description generates an Erdos-Renyi graph
 #' @param p number of nodes in the graph
@@ -27,7 +27,7 @@ community_graph <- function(p, prob = c(1/2,1/4,1/4), prob_in = 0.1, prob_out = 
   graph_mat
 }
 
-#' @description generates a precision matrix Omega
+#' @description generates a sparse precision matrix Omega
 #' @param p dimension of the graph
 #' @param omega_structure type of structure for the underlying graph
 #' @param v calibration parameter to get Omega from a graph
@@ -38,7 +38,7 @@ generate_omega <- function(p, omega_structure, v = 0.3, u = 0.1){
     if(omega_structure == "erdos_renyi") G <- erdos_renyi_graph(p)
     if(omega_structure == "preferential_attachment") G <- preferential_attachment_graph(p)
     if(omega_structure == "community") G <- community_graph(p)
-
+    
     # Ensuring that the network is not empty for AUC to make sense
     if(max(G) == 0){
       off_diag_indices <- which(row(matrix(1:p, p, p)) != col(matrix(1:p, p, p)), arr.ind = TRUE)
@@ -48,7 +48,7 @@ generate_omega <- function(p, omega_structure, v = 0.3, u = 0.1){
     }
     omega_tilde <- G * v
     omega <- omega_tilde + diag(abs(min(eigen(omega_tilde)$values)) + u, p, p)
-
+    
     # Ensuring that the network is not full for AUC to make sense
     if(min(omega) > 0){
       off_diag_indices <- which(row(matrix(1:p, p, p)) != col(matrix(1:p, p, p)), arr.ind = TRUE)
@@ -56,7 +56,7 @@ generate_omega <- function(p, omega_structure, v = 0.3, u = 0.1){
       omega[selected_index[["row"]], selected_index[["col"]]] <- 0
       omega[selected_index[["col"]], selected_index[["row"]]] <- 0
     }
-
+    
     # Including some variability + negative values in omega
     upper <- upper.tri(omega, diag = FALSE)
     pos_upper <- omega[upper] > 0
@@ -64,17 +64,17 @@ generate_omega <- function(p, omega_structure, v = 0.3, u = 0.1){
     upper_pos[upper] <- pos_upper
     to_replace <- rnorm(sum(upper_pos), mean = omega[upper_pos], sd = 0.2)
     omega[upper_pos] <- unlist(lapply(1:length(to_replace), f <- function(i){
-                                      ifelse(to_replace[[i]] > 0.9 | to_replace[[i]] < 0,
-                                             omega[upper_pos][[i]],
-                                             to_replace[[i]])}))
-
+      ifelse(to_replace[[i]] > 0.9 | to_replace[[i]] < 0,
+             omega[upper_pos][[i]],
+             to_replace[[i]])}))
+    
     omega[upper_pos] <- round(omega[upper_pos], 2)
     omega <- as.matrix(omega)
     prob <- runif(sum(upper_pos))
     to_negate <- prob < 0.4
     omega[upper_pos][to_negate] <- - omega[upper_pos][to_negate]
     omega[lower.tri(omega)] <- t(omega)[lower.tri(omega)]
-
+    
     # controlling for omega to be positive definite and its inverse to not have too high values
     cond <- ! is.complex(eigen(omega)$values )
     if(cond) cond <- all(eigen(omega)$values > 0)
@@ -83,7 +83,32 @@ generate_omega <- function(p, omega_structure, v = 0.3, u = 0.1){
   as.matrix(omega)
 }
 
-
+#' @description generates a sparse variance-covariance matrix Sigma
+#' @param p dimension of the graph
+#' @param sigma_structure type of structure for the underlying graph
+#' @param v calibration parameter to get Sigma from a graph
+generate_sigma_sparse <- function(p, sigma_structure, v = 0.3){
+  repeat {
+    if(sigma_structure == "erdos_renyi") G <- erdos_renyi_graph(p)
+    if(sigma_structure == "preferential_attachment") G <- preferential_attachment_graph(p)
+    if(sigma_structure == "community") G <- community_graph(p)
+    
+    # Ensuring that the network is not empty for AUC to make sense
+    if(max(G) == 0){
+      off_diag_indices <- which(row(matrix(1:p, p, p)) != col(matrix(1:p, p, p)), arr.ind = TRUE)
+      selected_index <- off_diag_indices[sample(nrow(off_diag_indices), 1), ]
+      G[selected_index[["row"]], selected_index[["col"]]] <- 1
+      G[selected_index[["col"]], selected_index[["row"]]] <- 1
+    }
+    G <- as.matrix(G)
+    S <- G * v
+    S[upper.tri(S)] <- S[upper.tri(S)] * ifelse(runif(sum(upper.tri(S))) < .4, -1, 1)
+    S[lower.tri(S)] <- t(S)[lower.tri(S)]
+    # S <- S + diag(abs(min(eigen(S)$values)) + 0.4, p)
+    S <- S + diag(abs(min(eigen(S)$values)) + 0.4 + rnorm(p, 0.5, 0.1), p)
+    if (all(eigen(S)$values > 0)) return(S)
+  }
+}
 ################## Functions to add zero-inflation in the data #################
 #' @description generate B0 that will define ZI probabilities with X0
 #' @param X0 matrix of ZI-related covariates
@@ -102,10 +127,10 @@ generate_B0 <- function(X0, max_X0B0 = -0.2){
 #' defined by rows and columns clusters
 #' @param n number of rows in the final zi_proba matrix
 #' @param block_values values of X0 %*% B0 expected for each pair (row_cluster, col_cluster)
-#' @param row_clusters divisions of 1:n into row clusters, given as a list of labels,
-#' default is equiprobable distributions
-#' @param col_clusters divisions of 1:p into column clusters, given as a list of labels,
-#' default is equiprobable distributions
+#' @param row_clusters divisions of 1:n into row clusters, given as a list of
+#' labels, drawn at random if not specified
+#' @param col_clusters divisions of 1:p into column clusters, given as a list of
+#' labels, drawn at random if not specified
 #' @param row_clusters_proba list of probabilities for row clusters, used only if row_clusters=NULL,
 #' default is equiprobable distributions
 #' @param col_clusters_proba list of probabilities for column clusters, used only if col_clusters=NULL,
@@ -114,7 +139,6 @@ generate_X0_B0_cluster <- function(n, p, block_values,
                                    row_clusters = NULL, col_clusters = NULL,
                                    row_clusters_proba = NULL,
                                    col_clusters_proba = NULL) {
-
   a <- nrow(block_values) ; b <- ncol(block_values)
   if(is.null(row_clusters)){
     if(is.null(row_clusters_proba)){
@@ -203,6 +227,8 @@ generate_X <- function(n, d, min_X = 0, max_X = 1, add_intercept = TRUE){
 #' @param d number of column in X
 #' @param n_cat_values number of values to include, either one single value for X,
 #' or a list of length d for each dimension, the values are distributed equiprobably in X
+#' @param row_clusters clustering of the rows (NULL by default - then the clusters
+#' are drawn at random)
 generate_discrete_X <- function(n, d, n_cat_values, row_clusters = NULL){
   X = matrix(rep(1, n * d), nrow=n)
   if(is.null(row_clusters)){

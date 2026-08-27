@@ -134,7 +134,6 @@ empty_network_rmse <- function(matrix_true) {
 #' the values it contains
 #' @param model_type whether model is a PLN, hmsc or gllvm model 
 get_auc <- function(omega_true, model, omega_hat = NULL){
-  model_type <- match.arg(model_type)
   roc <- roc_metrics(omega_true,
                      lapply(model$models, function(model) model$model_par$Omega))
   return(perf_auc(roc))
@@ -254,7 +253,9 @@ get_measures <- function(model, params, unpenalised_model = NULL,
       omega_rmse_debiased <-
         matrix_rmse_parts(debias_network(S, m$model_par$Omega),
                           params$Omega)[["matrix_rmse"]]
-      if(is.null(AUC)) AUC = get_auc(params$Omega, model)
+      if(is.null(AUC)){
+        AUC = get_auc(params$Omega, model)
+        }
       if(is.null(AUC.alt) ){
         AUC.alt = get_auc_alternative(params$Omega,
                                       unpenalised_model$model_par$Sigma)

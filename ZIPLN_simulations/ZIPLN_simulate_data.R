@@ -8,6 +8,9 @@ library(MASS)
 #' @param d number of covariates in the covariates matrix
 #' @param omega_structure network structure for the precision matrix (erdos_renyi,
 #' community or preferential_attachment)
+#' @param sigma_sparse boolean, indicates whether the simulation should be based
+#' on a sparse variance matrix - default is FALSE, corresponding to a sparse
+#' precision matrix
 #' @param zi_type type of zero-inflation
 #' @param zi_covar_cluster boolean, if zi_type = covar, whether there should be
 #' a division of the ZI values into rows and column clusters
@@ -22,6 +25,14 @@ library(MASS)
 #' @param proba_mode_zi list of probabilities of having each ZI contained in zi_mode_values
 #' @param block_values if zi_type = "covar" and  zi_covar_cluster = TRUE, values
 #' of X0 %*% B0 expected for each pair (row_cluster, col_cluster)
+#' #' @param row_clusters if zi_type = "covar", divisions of 1:n into row
+#' clusters, given as a list of labels, drawn at random if not specified
+#' @param col_clusters if zi_type = "covar" divisions of 1:p into column
+#' clusters, given as a list of labels, drawn at random if not specified
+#' @param row_clusters_proba list of probabilities for row clusters, used only
+#' if row_clusters=NULL, default is equiprobable distributions
+#' @param col_clusters_proba list of probabilities for column clusters, used
+#' only if col_clusters=NULL, default is equiprobable distributions
 #' @param X0 optional, if zi_type = covar, list of ZI covariates
 #' @param B0 optional, regression matrix for the ZI covariates, required if X0 is not null
 #' @param min_X0 minimum value for X0, either one single value for X0, or a list of length d for each dimension,
@@ -32,6 +43,7 @@ library(MASS)
 #' applied only if zi_covar_cluster = FALSE (otherwise X0 is discrete)
 generate_all_ZIPLN_parameters <- function(n, p, d, add_intercept = TRUE,
                                           omega_structure = "erdos_renyi",
+                                          sigma_sparse = FALSE,
                                           zi_type = c("covar", "sites", "species"),
                                           zi_covar_cluster = FALSE,
                                           min_X = 0, max_X = 10, mean_B  = 2,
@@ -47,11 +59,16 @@ generate_all_ZIPLN_parameters <- function(n, p, d, add_intercept = TRUE,
                                           X0 = NULL, B0 = NULL,
                                           min_X0 = 0, max_X0 = 10,
                                           max_X0B0 = -0.2){
-  Omega <- generate_omega(p, omega_structure, v, u)
-  Sigma <- chol2inv(chol(Omega))
+  if(sigma_sparse){
+    Sigma <- generate_sigma_sparse(p, omega_structure, v)
+    Omega <- chol2inv(chol(Sigma))
+  }else{
+    Omega <- generate_omega(p, omega_structure, v, u)
+    Sigma <- chol2inv(chol(Omega))
+  }
   X <- generate_X(n, d, min_X, max_X, add_intercept)
   B <- generate_B(p, X, Sigma, mean_B, sd_B, XB_max)
-
+  
   if(zi_type == "covar"){
     if(is.null(X0)){
       if(zi_covar_cluster){
@@ -67,7 +84,7 @@ generate_all_ZIPLN_parameters <- function(n, p, d, add_intercept = TRUE,
         zi_params <- list(X0 = X0, B0 = B0)
       }
     }else{zi_params <- list(X0 = X0, B0 = B0)}
-    }else{zi_params <- NULL}
+  }else{zi_params <- NULL}
   zi_proba <- generate_zi_proba(n, p, zi_type, zi_mode_values, proba_mode_zi,
                                 X0, B0)
   return(list(Omega = Omega, Sigma = Sigma, X = X, B = B,
@@ -129,7 +146,7 @@ rMLN <- function(n, mu = matrix(0, n, p), Sigma, N = rep(3000, n),
   W <- t(matrix(rbinom(n * p, size = 1, prob = zi_proba), n, p))
   counts <- counts * (W == 0)
   counts <- t(counts)
-
+  
   which_zero  <- which(colSums(counts) == 0)
   if (length(which_zero) > 0) {
     counts[sample.int(n, 1), which_zero] <- 1
