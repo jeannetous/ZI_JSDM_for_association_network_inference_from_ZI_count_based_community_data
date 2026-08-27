@@ -214,7 +214,7 @@ get_measures <- function(model, params, unpenalised_model = NULL,
   cor_true   <- cov2cor(params$Sigma)
   pcor_true  <- pcor_from_omega(params$Omega)
   
-  # RMSE Upper bounds common to all models
+  # RMSE Upper bounds (common to all the models)
   omega_rmse_empty         = round(empty_network_rmse(params$Omega)[["matrix_rmse"]], 4)
   omega_rmse_empty_offdiag = round(empty_network_rmse(params$Omega)[["matrix_rmse_offdiag"]], 4)
   sigma_rmse_empty         = round(empty_network_rmse(params$Sigma)[["matrix_rmse"]], 4)
@@ -315,7 +315,6 @@ get_measures <- function(model, params, unpenalised_model = NULL,
   }
   
   if(model_type == "hmsc"){
-    
     # B error
     if(add_intercept){
       hmsc_B     <- getPostEstimate(model, parName = "Beta")$mean[c(1,2), ]
@@ -340,10 +339,8 @@ get_measures <- function(model, params, unpenalised_model = NULL,
     cor_rmse            <- cor_rmse_parts[["matrix_rmse"]]
     
     if(is.null(AUC)){
-      ## AUC le long du MEME chemin glasso que pour les autres methodes a rang
-      ## faible ; l'ancien seuillage par quantiles est conserve en AUC.alt
       AUC     = get_auc_alternative(params$Omega, sigma_glasso)
-      AUC.alt = get_auc(params$Omega, model, omega_hat, model_type)
+      AUC.alt = NA_real_
     }
     Sigma_AUC <- get_sigma_auc(params$Sigma, model, 
                                model_type = "hmsc")
@@ -356,6 +353,7 @@ get_measures <- function(model, params, unpenalised_model = NULL,
                        Ybis[is.na(params$Y_hurdle)] <- 0
                        return(Ybis)})
     fit_rmse <- min(unlist(lapply(fitted, function(Y) return(rmse(Y, params$Y)))))
+    
     # Aggregated results
     res <- c(
       criterion = NA,
@@ -398,12 +396,10 @@ get_measures <- function(model, params, unpenalised_model = NULL,
     
     
     # Omega / Sigma measures
-    Sigma <- getResidualCov(model)$cov
-    ## protocole unifie. L'ancien solve(Sigma + diag(0.005)) inversait une Sigma
-    ## de rang faible : cf. audit_omega_rmse.R, section C.
-    omega_hat  <- select_sparse_precision(Sigma, nrow(params$Y))
-    omega_rmse_parts <- matrix_rmse_parts(omega_hat, params$Omega)
-    omega_rmse <- omega_rmse_parts[["matrix_rmse"]]
+    Sigma               <- getResidualCov(model)$cov
+    omega_hat           <- select_sparse_precision(Sigma, nrow(params$Y))
+    omega_rmse_parts    <- matrix_rmse_parts(omega_hat, params$Omega)
+    omega_rmse          <- omega_rmse_parts[["matrix_rmse"]]
     omega_rmse_debiased <- NA_real_
     pcor_rmse_parts     <- matrix_rmse_parts(pcor_from_omega(omega_hat), pcor_true)
     pcor_rmse           <- pcor_rmse_parts[["matrix_rmse"]]
@@ -413,9 +409,8 @@ get_measures <- function(model, params, unpenalised_model = NULL,
     cor_rmse            <- cor_rmse_parts[["matrix_rmse"]]
     
     if(is.null(AUC)){
-      ## meme chemin glasso que pour hmsc ; ancien seuillage garde en AUC.alt
       AUC     = get_auc_alternative(params$Omega, Sigma)
-      AUC.alt = get_auc(params$Omega, model, omega_hat, model_type)
+      AUC.alt = NA_real_
     }
     Sigma_AUC <- get_sigma_auc(params$Sigma, model, sigma_hat = Sigma,
                                model_type = "gllvm")
@@ -448,67 +443,6 @@ get_measures <- function(model, params, unpenalised_model = NULL,
       AUC = AUC, AUC.alt = AUC.alt,
       Sigma_AUC = Sigma_AUC,
       fit_rmse = round(fit_rmse, 4),
-      roc_metrics(params$Omega, omega_hat)
-    )
-  }
-  if(model_type == "glmmTMB"){
-    
-    # B error
-    B_rmse <-  NA_real_
-    
-    
-    
-    # Omega / Sigma measures
-    Sigma <- sigma_glmmTMB(model, colnames(params$Y))
-    ## protocole unifie. L'ancien solve(Sigma + diag(0.005)) inversait une Sigma
-    ## de rang faible : cf. audit_omega_rmse.R, section C.
-    omega_hat  <- select_sparse_precision(Sigma, nrow(params$Y))
-    omega_rmse_parts <- matrix_rmse_parts(omega_hat, params$Omega)
-    omega_rmse <- omega_rmse_parts[["matrix_rmse"]]
-    omega_rmse_debiased <- NA_real_
-    pcor_rmse_parts     <- matrix_rmse_parts(pcor_from_omega(omega_hat), pcor_true)
-    pcor_rmse           <- pcor_rmse_parts[["matrix_rmse"]]
-    sigma_rmse_parts    <- matrix_rmse_parts(Sigma, params$Sigma)
-    sigma_rmse          <- sigma_rmse_parts[["matrix_rmse"]]
-    cor_rmse_parts      <- matrix_rmse_parts(cov2cor(Sigma), cor_true)
-    cor_rmse            <- cor_rmse_parts[["matrix_rmse"]]
-    
-    if(is.null(AUC)){
-      # meme chemin glasso que pour hmsc ; ancien seuillage garde en AUC.alt
-      AUC     = get_auc_alternative(params$Omega, Sigma)
-      AUC.alt = get_auc(params$Omega, model, omega_hat, model_type)
-    }
-    Sigma_AUC <- get_sigma_auc(params$Sigma, model, sigma_hat = Sigma,
-                               model_type = "glmmTMB")
-    
-    # Fit measures
-    # fit_rmse   <- rmse(predict.gllvm(model), params$Y)
-    
-    # Aggregated results
-    res <- c(
-      criterion = NA,
-      B_rmse = NA,
-      omega_rmse = round(omega_rmse, 4),
-      omega_rmse_diag    = round(omega_rmse_parts[["matrix_rmse_diag"]], 4),
-      omega_rmse_offdiag = round(omega_rmse_parts[["matrix_rmse_offdiag"]], 4),
-      omega_rmse_empty   = omega_rmse_empty,
-      omega_rmse_empty_offdiag = omega_rmse_empty_offdiag,
-      omega_rmse_debiased = round(omega_rmse_debiased, 4),
-      pcor_rmse = round(pcor_rmse, 4),
-      pcor_rmse_offdiag = round(pcor_rmse_parts[["matrix_rmse_offdiag"]], 4),
-      pcor_rmse_empty   = pcor_rmse_empty,
-      pcor_rmse_empty_offdiag = pcor_rmse_empty_offdiag,
-      sigma_rmse = round(sigma_rmse, 4),
-      sigma_rmse_offdiag = round(sigma_rmse_parts[["matrix_rmse_offdiag"]], 4),
-      sigma_rmse_empty   = sigma_rmse_empty,
-      sigma_rmse_empty_offdiag = sigma_rmse_empty_offdiag,
-      cor_rmse = round(cor_rmse, 4),
-      cor_rmse_offdiag = round(cor_rmse_parts[["matrix_rmse_offdiag"]], 4),
-      cor_rmse_empty   = cor_rmse_empty,
-      cor_rmse_empty_offdiag = cor_rmse_empty_offdiag,
-      AUC = AUC, AUC.alt = AUC.alt,
-      Sigma_AUC = Sigma_AUC,
-      fit_rmse = NA_real_,
       roc_metrics(params$Omega, omega_hat)
     )
   }
