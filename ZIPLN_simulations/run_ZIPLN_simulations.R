@@ -29,7 +29,7 @@ row_clusters_proba_ref <- rep(1/3, 3)
 col_clusters_proba_ref <- rep(0.2, 5)
 
 ############################ Simulations parameters ############################
-n_simu               <- 10
+n_simu               <- 5
 n_list               <- c(50)
 p_list               <- c(25)
 omega_structure_list <- c("erdos_renyi")

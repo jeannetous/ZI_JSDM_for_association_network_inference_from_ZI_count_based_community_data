@@ -1,0 +1,82 @@
+---
+title: "A JSDM with zero-inflation to improve the inference of partial correlation networks from count community data with structural zeros."
+format: html
+editor: visual
+---
+
+## Description
+
+> This repository contains the code and results to support the work described in "A JSDM with zero-inflation to improve the inference of partial correlation networks from count community data with structural zeros." (Tous et al. (2026), preprint). This includes the code used for the simulation study, as well as the code and data used for the analysis of tropical freshwater communities.
+
+## Required libraries
+
+The simulation code requires loading different libraries.
+
+Three different libraries were used to run Joint Species Distribution Models:
+
+```{r}
+library("PLNmodels") # Version 1.2.2 or higher
+library("Hmsc")      # Version 3.3-7 
+library("gllvm")     # Version 2.0.13
+```
+
+Different practical libraries were used for data manipulation and analysis:
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(Metrics)
+```
+
+## Simulation study
+
+The *ZIPLN_simulations* folder contains all the required code to reproduce the simulation study. The user can start by running:
+
+```{r}
+source("run_ZIPLN_simulation.R")
+```
+
+This will produce 5 replicates of a simulation with data simulated under a compositional model derived from the zero-inflated Poisson log-normal distribution, with a species-dependent zero-inflation, a sparse precision matrix with an Erdös-Rényi network structure, 25 species and 50 sites (observations). All these parameters can be changed directly in the file:
+
+```{r}
+n_simu               <- 5
+n_list               <- c(50)
+p_list               <- c(25)
+omega_structure_list <- c("erdos_renyi")
+
+zi_type_list                <- c("species")
+zi_mode_values_species_ref = c(0.1, 0.25, 0.5, 0.75)
+proba_mode_zi_values_species_ref = rep(0.25, 4)
+zi_mode_values_sites_list   <- NULL
+proba_mode_zi_sites_list    <- NULL
+zi_mode_values_species_list = list(0.1 * zi_mode_values_species_ref,
+                                   0.5 * zi_mode_values_species_ref,
+                                   zi_mode_values_species_ref,
+                                   1.1 * zi_mode_values_species_ref
+                                   )
+proba_mode_zi_species_list = list(proba_mode_zi_values_species_ref,
+                                  proba_mode_zi_values_species_ref,
+                                  proba_mode_zi_values_species_ref,
+                                  proba_mode_zi_values_species_ref
+                                  )
+```
+
+The code for the simulations is in the `ZIPLN_simulations.R` file. The general pipeline consists in:
+
+-   Simulate data under the required distribution, with the sets of parameters the user gives.
+
+-   Run each tested JSDM on the simulated data (PLN-network, ZIPLN-network, unpenalised ZIPLN, gllvm, Hmsc).
+
+-   Return a set of measures for each JSDM (AUC, RMSE...)
+
+The `one_ZIPLN_simulation` function runs a single simulation, with a single set of parameters. The `multiple_ZIPLN_simulations` runs `n_simu` replicates of a simulation with the same set of parameters. Finally the `grid_ZIPLN_simulations` function allows the user to run `n_simu` replicates of simulations under the different parameter combinations they specify.
+
+The code for the models' assessment is contained in the `ZIPLN_measures.R` file. The code for data simulation is distributed between the `ZIPLN_generate_simulation_parameters.R`, `ZIPLN_simulate_data.R` and `negative_binomial_simulate_data.R` files. The first one produces all the required simulation parameters, the second one simulates compositional data derived from a zero-inflated Poisson log-normal distribution whereas the third one does the same with a negative binomial distribution.
+
+The `rank_tests.R` file allows the user to reproduce the experiments presented in **Appendix S2**, that is, to test the results of the Hmsc and gllvm models with an increasing number of ranks. 
+
+## Analysis of tropical freshwater fish communities
+
+The data analysis presented in Tous et al. (2026) can be reproduced with the `data_analysis.qmd` file. The data it is based on is contained in the `data` folder, with `NORTHERN_RANGE_DATASET_COUNTS.Rdata` containing community data (species counts on a set of sites) and `NORTHERN_RANGE_DATASET_COVARIATES.Rdata` containing the corresponding covariates. 
+
+The data is first formatted to fit the `PLNmodels` requirements. Then, the different PLN-network and ZIPLN-network presented in our study are fitted to the data and several visualisations are proposed. For a more in-depth analysis of the model's results, the reader should refer to the `PLNmodels` documentation.
