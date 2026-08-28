@@ -6,7 +6,7 @@ editor: visual
 
 ## Description
 
-> This repository contains the code and results to support the work described in "A JSDM with zero-inflation to improve the inference of partial correlation networks from count community data with structural zeros." (Tous et al. (2026), preprint). This includes the code used for the simulation study, as well as the code and data used for the analysis of tropical freshwater communities.
+> This repository contains the code and results to support the work described in "A JSDM with zero-inflation to improve the inference of partial correlation networks from count community data with structural zeros." (Tous et al. (2026), preprint). This includes the code used for the simulation study, as well as the code and data used for the analysis of tropical freshwater fish communities.
 
 ## Required libraries
 
@@ -14,7 +14,7 @@ The simulation code requires loading different libraries.
 
 Three different libraries were used to run Joint Species Distribution Models:
 
-```{r}
+```{r, eval = FALSE}
 library("PLNmodels") # Version 1.2.2 or higher
 library("Hmsc")      # Version 3.3-7 
 library("gllvm")     # Version 2.0.13
@@ -22,7 +22,7 @@ library("gllvm")     # Version 2.0.13
 
 Different practical libraries were used for data manipulation and analysis:
 
-```{r}
+```{r, eval = FALSE}
 library(tidyr)
 library(dplyr)
 library(Metrics)
@@ -32,13 +32,14 @@ library(Metrics)
 
 The *ZIPLN_simulations* folder contains all the required code to reproduce the simulation study. The user can start by running:
 
-```{r}
-source("run_ZIPLN_simulation.R")
+```{r, eval = FALSE}
+setwd("ZIPLN_simulations")
+source("run_ZIPLN_simulations.R")
 ```
 
 This will produce 5 replicates of a simulation with data simulated under a compositional model derived from the zero-inflated Poisson log-normal distribution, with a species-dependent zero-inflation, a sparse precision matrix with an Erdös-Rényi network structure, 25 species and 50 sites (observations). All these parameters can be changed directly in the file:
 
-```{r}
+```{r, eval = FALSE}
 n_simu               <- 5
 n_list               <- c(50)
 p_list               <- c(25)
