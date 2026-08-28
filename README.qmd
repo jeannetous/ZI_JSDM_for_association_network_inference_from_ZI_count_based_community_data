@@ -1,6 +1,8 @@
 ---
 title: "A JSDM with zero-inflation to improve the inference of partial correlation networks from count community data with structural zeros."
-format: html
+format:
+  gfm:
+    default-image-extension: ""
 editor: visual
 ---
 
@@ -74,10 +76,10 @@ The `one_ZIPLN_simulation` function runs a single simulation, with a single set 
 
 The code for the models' assessment is contained in the `ZIPLN_measures.R` file. The code for data simulation is distributed between the `ZIPLN_generate_simulation_parameters.R`, `ZIPLN_simulate_data.R` and `negative_binomial_simulate_data.R` files. The first one produces all the required simulation parameters, the second one simulates compositional data derived from a zero-inflated Poisson log-normal distribution whereas the third one does the same with a negative binomial distribution.
 
-The `rank_tests.R` file allows the user to reproduce the experiments presented in **Appendix S2**, that is, to test the results of the Hmsc and gllvm models with an increasing number of ranks. 
+The `rank_tests.R` file allows the user to reproduce the experiments presented in **Appendix S2**, that is, to test the results of the Hmsc and gllvm models with an increasing number of ranks.
 
 ## Analysis of tropical freshwater fish communities
 
-The data analysis presented in Tous et al. (2026) can be reproduced with the `data_analysis.qmd` file. The data it is based on is contained in the `data` folder, with `NORTHERN_RANGE_DATASET_COUNTS.Rdata` containing community data (species counts on a set of sites) and `NORTHERN_RANGE_DATASET_COVARIATES.Rdata` containing the corresponding covariates. 
+The data analysis presented in Tous et al. (2026) can be reproduced with the `data_analysis.qmd` file. The data it is based on is contained in the `data` folder, with `NORTHERN_RANGE_DATASET_COUNTS.Rdata` containing community data (species counts on a set of sites) and `NORTHERN_RANGE_DATASET_COVARIATES.Rdata` containing the corresponding covariates.
 
 The data is first formatted to fit the `PLNmodels` requirements. Then, the different PLN-network and ZIPLN-network presented in our study are fitted to the data and several visualisations are proposed. For a more in-depth analysis of the model's results, the reader should refer to the `PLNmodels` documentation.
