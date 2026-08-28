@@ -1,7 +1,7 @@
 ############################ Loading useful libraries ##########################
 source("ZIPLN_simulations.R")
 set.seed(2)
-distribution = "negative.binomial"
+distribution = "ZIP"
 
 # Creating the saving repositories if needed
 for (d in c("RES/ZIP_simulations",
@@ -70,4 +70,4 @@ res <- grid_ZIPLN_simulation(n_simu, n_list, p_list, omega_structure_list,
                              mc.cores = max(1, parallel::detectCores() - 2))
 
 write.csv(res, 
-          "RES/NB_simulations/res_1.csv")
+          "RES/ZIP_simulations/res_1.csv")
